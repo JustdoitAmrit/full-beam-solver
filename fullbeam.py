@@ -5,13 +5,11 @@ from matplotlib import use as mpl_use
 
 mpl_use("Agg")  # Use non-interactive backend for Streamlit compatibility
 
-# Initialize or retrieve supports, point loads, and UDLs list in session state
+# Initialize or retrieve session state
 if 'supports' not in st.session_state:
     st.session_state.supports = []  # Store supports persistently
-
 if 'point_loads' not in st.session_state:
     st.session_state.point_loads = []  # Store point loads persistently
-
 if 'udls' not in st.session_state:
     st.session_state.udls = []  # Store UDLs persistently
 
@@ -24,6 +22,7 @@ class Beam:
         self.node = self.generate_nodes()
         self.bar = self.generate_bars()
         self.point_load = np.zeros((self.segments + 1, 2))
+        self.udl = np.zeros((self.segments + 1, 2))  # Store UDL effect
         self.force = np.zeros((self.segments, 4))
         self.displacement = np.zeros((self.segments, 4))
 
@@ -44,16 +43,17 @@ class Beam:
                 support_matrix[position, 0] = 0
         return support_matrix
 
-    def apply_udls(self):
+    def apply_udl(self):
+        # Reset UDL effects
+        self.udl.fill(0)
         for udl in st.session_state.udls:
-            start = udl['start_position']
-            end = udl['end_position']
-            load_per_segment = udl['magnitude'] * (end - start) / self.segments
-            for position in range(start, end + 1):
-                self.point_load[position, 0] += load_per_segment
+            start = udl["start_position"]
+            end = udl["end_position"]
+            magnitude = udl["magnitude"]
+            self.udl[start:end + 1, 0] += magnitude  # Apply UDL to all affected nodes
 
     def analysis(self):
-        self.apply_udls()  # Apply UDLs
+        self.apply_udl()  # Apply UDL effects before analysis
         self.support = self.apply_supports()  # Use the applied supports
         nn = len(self.node)
         ne = len(self.bar)
@@ -61,6 +61,7 @@ class Beam:
         d = self.node[self.bar[:, 1], :] - self.node[self.bar[:, 0], :]
         length = np.sqrt((d**2).sum(axis=1))
         ss = np.zeros((n_dof, n_dof))
+        
         for i in range(ne):
             l = length[i]
             k = self.young * self.inertia / l**3 * np.array(
@@ -75,13 +76,16 @@ class Beam:
 
         free_dof = self.support.flatten().nonzero()[0]
         kff = ss[np.ix_(free_dof, free_dof)]
-        p = self.point_load.flatten()
+        
+        p = self.point_load.flatten() + self.udl.flatten()  # Include UDL effects
         pf = p[free_dof]
         uf = np.linalg.solve(kff, pf)
+        
         u = self.support.astype(float).flatten()
         u[free_dof] = uf
         u = u.reshape(nn, 2)
         u_ele = np.concatenate((u[self.bar[:, 0]], u[self.bar[:, 1]]), axis=1)
+        
         for i in range(ne):
             self.force[i] = np.dot(k, u_ele[i])
             self.displacement[i] = u_ele[i]
@@ -90,7 +94,7 @@ class Beam:
         fig, axs = plt.subplots(3, figsize=(10, 8))
         ne = len(self.bar)
 
-        # Run analysis with current loads
+        # Run analysis with current loads and UDLs
         self.analysis()
 
         for i in range(ne):
@@ -146,18 +150,18 @@ if add_support:
     st.session_state.supports.append({"position": support_position, "type": support_type})
     st.sidebar.write(f"{support_type} support added at position {support_position}")
 
-st.sidebar.header("Point Load")
-load_position = st.sidebar.slider("Point Load Position", 0, segments, 0)
-load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000.0, format="%.2f")
-add_point_load = st.sidebar.button("Add Point Load")
+st.sidebar.header("Point Loads")
+load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000)
+load_position = st.sidebar.slider("Load Position", 0, segments, 0)
+add_load = st.sidebar.button("Add Point Load")
 
-if add_point_load:
+if add_load:
     # Add point load to session state for persistence
     st.session_state.point_loads.append({"position": load_position, "magnitude": load_magnitude})
     st.sidebar.write(f"Point load of {load_magnitude} N added at position {load_position}")
 
 st.sidebar.header("Uniformly Distributed Load (UDL)")
-udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=0.0, value=100.0, format="%.2f")
+udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=-1e6, value=100.0, format="%.2f")
 udl_start_position = st.sidebar.slider("UDL Start Position", 0, segments, 0)
 udl_end_position = st.sidebar.slider("UDL End Position", 0, segments, segments)
 
@@ -166,23 +170,23 @@ add_udl = st.sidebar.button("Add UDL")
 if add_udl:
     # Add UDL to session state for persistence
     st.session_state.udls.append({"start_position": udl_start_position, "end_position": udl_end_position, "magnitude": udl_magnitude})
-    st.sidebar.write(f"UDL of {udl_magnitude} N/m from position {udl_start_position} to {udl_end_position} added.")
+    st.sidebar.write(f"UDL of {udl_magnitude} N/m from position {udl_start_position} to {udl_end_position}")
 
-# Display current supports and loads in the sidebar
-st.sidebar.subheader("Current Supports")
-for support in st.session_state.supports:
-    st.sidebar.write(f"{support['type']} support at position {support['position']}")
+# Button to calculate and plot results
+calculate_button = st.sidebar.button("Calculate")
 
-st.sidebar.subheader("Current Point Loads")
-for load in st.session_state.point_loads:
-    st.sidebar.write(f"{load['magnitude']} N at position {load['position']}")
+if calculate_button:
+    # Initialize Beam object with current parameters
+    beam = Beam(E, I, length, segments)
 
-st.sidebar.subheader("Current UDLs")
-for udl in st.session_state.udls:
-    st.sidebar.write(f"{udl['magnitude']} N/m from position {udl['start_position']} to {udl['end_position']}")
+    # Apply point loads
+    for load in st.session_state.point_loads:
+        beam.point_load[load["position"], 0] += load["magnitude"]
 
-# Create and plot the beam
-beam = Beam(E, I, length, segments)
-fig = beam.plot()
-st.pyplot(fig)
+    # Generate plots
+    fig = beam.plot()
+    
+    # Display the plots in Streamlit
+    st.pyplot(fig)
+
 
