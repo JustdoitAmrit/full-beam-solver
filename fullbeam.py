@@ -135,10 +135,10 @@ class Beam:
 st.title("Beam Analysis App")
 
 st.sidebar.header("Beam Properties")
-E = st.sidebar.number_input("Young's Modulus (E)", min_value=1e7, value=2e11, format="%.2e")
-I = st.sidebar.number_input("Moment of Inertia (I)", min_value=1e-10, value=5e-4, format="%.2e")
-length = st.sidebar.number_input("Beam Length (m)", min_value=1.0, value=10.0)
-segments = st.sidebar.number_input("Number of Segments", min_value=1, value=12)
+E = st.sidebar.number_input("Young's Modulus (E)", min_value=float(1e7), value=float(2e11), format="%.2e")
+I = st.sidebar.number_input("Moment of Inertia (I)", min_value=float(1e-10), value=float(5e-4), format="%.2e")
+length = st.sidebar.number_input("Beam Length (m)", min_value=float(1.0), value=float(10.0))
+segments = st.sidebar.number_input("Number of Segments", min_value=int(1), value=int(12))
 
 st.sidebar.header("Support Conditions")
 support_type = st.sidebar.selectbox("Select Support Type", ["Fixed", "Pinned"])
@@ -151,9 +151,9 @@ if add_support:
     st.sidebar.write(f"{support_type} support added at position {support_position}")
 
 st.sidebar.header("Point Loads")
-load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000)
+load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=float(-1e6), value=float(-1000))
 load_position = st.sidebar.slider("Load Position", 0, segments, 0)
-add_load = st.sidebar.button("Add Point Load")
+add_load = st.sidebar.button("Add Load")
 
 if add_load:
     # Add point load to session state for persistence
@@ -161,16 +161,18 @@ if add_load:
     st.sidebar.write(f"Point load of {load_magnitude} N added at position {load_position}")
 
 st.sidebar.header("Uniformly Distributed Load (UDL)")
-udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=-1e6, value=100.0, format="%.2f")
+udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=float(-1e6), value=float(100.0), format="%.2f")
 udl_start_position = st.sidebar.slider("UDL Start Position", 0, segments, 0)
 udl_end_position = st.sidebar.slider("UDL End Position", 0, segments, segments)
 
-add_udl = st.sidebar.button("Add UDL")
-
-if add_udl:
-    # Add UDL to session state for persistence
-    st.session_state.udls.append({"start_position": udl_start_position, "end_position": udl_end_position, "magnitude": udl_magnitude})
-    st.sidebar.write(f"UDL of {udl_magnitude} N/m from position {udl_start_position} to {udl_end_position}")
+# Store UDL in session state
+if st.sidebar.button("Add UDL"):
+    st.session_state.udls.append({
+        "magnitude": udl_magnitude,
+        "start_position": udl_start_position,
+        "end_position": udl_end_position,
+    })
+    st.sidebar.write(f"UDL of {udl_magnitude} N/m from {udl_start_position} to {udl_end_position}")
 
 # Button to calculate and plot results
 calculate_button = st.sidebar.button("Calculate")
@@ -188,5 +190,3 @@ if calculate_button:
     
     # Display the plots in Streamlit
     st.pyplot(fig)
-
-
