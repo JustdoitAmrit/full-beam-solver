@@ -5,7 +5,7 @@ from matplotlib import use as mpl_use
 
 mpl_use("Agg")  # Use non-interactive backend for Streamlit compatibility
 
-# Initialize or retrieve supports and loads lists in session state
+# Initialize or retrieve supports, point loads, and UDLs list in session state
 if 'supports' not in st.session_state:
     st.session_state.supports = []  # Store supports persistently
 
@@ -13,7 +13,7 @@ if 'point_loads' not in st.session_state:
     st.session_state.point_loads = []  # Store point loads persistently
 
 if 'udls' not in st.session_state:
-    st.session_state.udls = []  # Store uniformly distributed loads persistently
+    st.session_state.udls = []  # Store UDLs persistently
 
 class Beam:
     def __init__(self, young, inertia, length, segments):
@@ -44,27 +44,16 @@ class Beam:
                 support_matrix[position, 0] = 0
         return support_matrix
 
-    def apply_point_loads(self):
-        self.point_load.fill(0)
-        for load in st.session_state.point_loads:
-            position = load["position"]
-            magnitude = load["magnitude"]
-            self.point_load[position, 0] += magnitude  # Accumulate point loads at the same position
-
     def apply_udls(self):
         for udl in st.session_state.udls:
-            position = udl["position"]
-            magnitude = udl["magnitude"]
-            start_node = position
-            end_node = position + 1
-            if end_node <= self.segments:
-                # Distribute the load evenly across the segment
-                self.point_load[start_node, 0] += magnitude / 2  # Half at the start
-                self.point_load[end_node, 0] += magnitude / 2  # Half at the end
+            start = udl['start_position']
+            end = udl['end_position']
+            load_per_segment = udl['magnitude'] * (end - start) / self.segments
+            for position in range(start, end + 1):
+                self.point_load[position, 0] += load_per_segment
 
     def analysis(self):
-        self.apply_point_loads()  # Apply the point loads
-        self.apply_udls()         # Apply the UDLs
+        self.apply_udls()  # Apply UDLs
         self.support = self.apply_supports()  # Use the applied supports
         nn = len(self.node)
         ne = len(self.bar)
@@ -101,7 +90,7 @@ class Beam:
         fig, axs = plt.subplots(3, figsize=(10, 8))
         ne = len(self.bar)
 
-        # Run analysis (this uses the applied loads from the session state)
+        # Run analysis with current loads
         self.analysis()
 
         for i in range(ne):
@@ -152,38 +141,37 @@ support_type = st.sidebar.selectbox("Select Support Type", ["Fixed", "Pinned"])
 support_position = st.sidebar.slider("Support Position", 0, segments, 0)
 add_support = st.sidebar.button("Add Support")
 
-st.sidebar.header("Point Load Conditions")
-load_position = st.sidebar.slider("Point Load Position", 0, segments, 0)
-load_magnitude = st.sidebar.number_input("Point Load Magnitude (N)", min_value=-1e6, value=-1000.0)  # Changed to float
-add_point_load = st.sidebar.button("Add Point Load")
-
-st.sidebar.header("Uniformly Distributed Load Conditions")
-udl_position = st.sidebar.slider("UDL Position", 0, segments - 1, 0)  # Position for UDL start
-udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=0.0, value=500.0)  # Magnitude of UDL
-add_udl = st.sidebar.button("Add UDL")
-
-# Initialize beam instance
-beam = Beam(E, I, length, segments)
-
 if add_support:
     # Add support to session state for persistence
     st.session_state.supports.append({"position": support_position, "type": support_type})
     st.sidebar.write(f"{support_type} support added at position {support_position}")
+
+st.sidebar.header("Point Load")
+load_position = st.sidebar.slider("Point Load Position", 0, segments, 0)
+load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000)
+add_point_load = st.sidebar.button("Add Point Load")
 
 if add_point_load:
     # Add point load to session state for persistence
     st.session_state.point_loads.append({"position": load_position, "magnitude": load_magnitude})
     st.sidebar.write(f"Point load of {load_magnitude} N added at position {load_position}")
 
+# UDL Inputs
+st.sidebar.header("Uniformly Distributed Load (UDL)")
+udl_start_position = st.sidebar.slider("UDL Start Position", 0, segments, 0)
+udl_end_position = st.sidebar.slider("UDL End Position", 0, segments, segments)
+udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=0.0, value=100.0)
+add_udl = st.sidebar.button("Add UDL")
+
 if add_udl:
     # Add UDL to session state for persistence
-    st.session_state.udls.append({"position": udl_position, "magnitude": udl_magnitude})
-    st.sidebar.write(f"UDL of {udl_magnitude} N/m added starting at position {udl_position}")
+    st.session_state.udls.append({"start_position": udl_start_position, "end_position": udl_end_position, "magnitude": udl_magnitude})
+    st.sidebar.write(f"UDL of {udl_magnitude} N/m added from position {udl_start_position} to {udl_end_position}")
 
 # Display added supports and loads
 st.sidebar.subheader("Current Supports")
 for support in st.session_state.supports:
-    st.sidebar.write(f"{support['type']} at position {support['position']}")
+    st.sidebar.write(f"{support['type']} support at position {support['position']}")
 
 st.sidebar.subheader("Current Point Loads")
 for load in st.session_state.point_loads:
@@ -191,8 +179,9 @@ for load in st.session_state.point_loads:
 
 st.sidebar.subheader("Current UDLs")
 for udl in st.session_state.udls:
-    st.sidebar.write(f"{udl['magnitude']} N/m starting at position {udl['position']}")
+    st.sidebar.write(f"{udl['magnitude']} N/m from position {udl['start_position']} to {udl['end_position']}")
 
-st.subheader("Beam Analysis Results")
+# Create and plot the beam
+beam = Beam(E, I, length, segments)
 fig = beam.plot()
 st.pyplot(fig)
