@@ -148,7 +148,7 @@ if add_support:
 
 st.sidebar.header("Point Load")
 load_position = st.sidebar.slider("Point Load Position", 0, segments, 0)
-load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000)
+load_magnitude = st.sidebar.number_input("Load Magnitude (N)", min_value=-1e6, value=-1000.0, format="%.2f")
 add_point_load = st.sidebar.button("Add Point Load")
 
 if add_point_load:
@@ -156,19 +156,19 @@ if add_point_load:
     st.session_state.point_loads.append({"position": load_position, "magnitude": load_magnitude})
     st.sidebar.write(f"Point load of {load_magnitude} N added at position {load_position}")
 
-# UDL Inputs
 st.sidebar.header("Uniformly Distributed Load (UDL)")
+udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=0.0, value=100.0, format="%.2f")
 udl_start_position = st.sidebar.slider("UDL Start Position", 0, segments, 0)
 udl_end_position = st.sidebar.slider("UDL End Position", 0, segments, segments)
-udl_magnitude = st.sidebar.number_input("UDL Magnitude (N/m)", min_value=0.0, value=100.0)
+
 add_udl = st.sidebar.button("Add UDL")
 
 if add_udl:
     # Add UDL to session state for persistence
     st.session_state.udls.append({"start_position": udl_start_position, "end_position": udl_end_position, "magnitude": udl_magnitude})
-    st.sidebar.write(f"UDL of {udl_magnitude} N/m added from position {udl_start_position} to {udl_end_position}")
+    st.sidebar.write(f"UDL of {udl_magnitude} N/m from position {udl_start_position} to {udl_end_position} added.")
 
-# Display added supports and loads
+# Display current supports and loads in the sidebar
 st.sidebar.subheader("Current Supports")
 for support in st.session_state.supports:
     st.sidebar.write(f"{support['type']} support at position {support['position']}")
@@ -185,3 +185,4 @@ for udl in st.session_state.udls:
 beam = Beam(E, I, length, segments)
 fig = beam.plot()
 st.pyplot(fig)
+
